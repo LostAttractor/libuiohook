@@ -243,6 +243,10 @@ void unset_modifier_mask(uint16_t mask) {
     modifier_mask &= ~mask;
 }
 
+void clear_modifier_mask() {
+    modifier_mask = 0;
+}
+
 uint16_t get_modifiers() {
     return modifier_mask;
 }

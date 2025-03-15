@@ -34,19 +34,16 @@ static BOOL invisible_win_class_initialized = FALSE;
 // The handle to the DLL module pulled in DllMain on DLL_PROCESS_ATTACH.
 extern HINSTANCE hInst;
 
-// Modifiers for tracking key masks.
-static unsigned short int current_modifiers = 0x0000;
-
 #ifdef USE_EPOCH_TIME
 // Structure for the current Unix epoch in milliseconds.
 static FILETIME system_time;
 #endif
 
-// Initialize the modifier mask to the current modifiers.
-static void initialize_modifiers(bool keyboard, bool mouse) {
-    current_modifiers = 0x0000;
+// Set the modifier mask to the current modifiers.
+static void set_modifiers() {
+    clear_modifier_mask();
 
-    if (keyboard) {
+    if (keyboard_event_hhook != NULL) {
         // NOTE We are checking the high order bit, so it will be < 0 for a singed short.
         if (GetKeyState(VK_LSHIFT)   < 0) { set_modifier_mask(MASK_SHIFT_L);     }
         if (GetKeyState(VK_RSHIFT)   < 0) { set_modifier_mask(MASK_SHIFT_R);     }
@@ -62,7 +59,7 @@ static void initialize_modifiers(bool keyboard, bool mouse) {
         if (GetKeyState(VK_SCROLL)   < 0) { set_modifier_mask(MASK_SCROLL_LOCK); }
     }
 
-    if (mouse) {
+    if (mouse_event_hhook != NULL) {
         if (GetKeyState(VK_LBUTTON)  < 0) { set_modifier_mask(MASK_BUTTON1);     }
         if (GetKeyState(VK_RBUTTON)  < 0) { set_modifier_mask(MASK_BUTTON2);     }
         if (GetKeyState(VK_MBUTTON)  < 0) { set_modifier_mask(MASK_BUTTON3);     }
@@ -85,6 +82,8 @@ void unregister_running_hooks() {
 }
 
 LRESULT CALLBACK keyboard_hook_event_proc(int nCode, WPARAM wParam, LPARAM lParam) {
+    set_modifiers();
+
     bool consumed = false;
 
     KBDLLHOOKSTRUCT *kbhook = (KBDLLHOOKSTRUCT *) lParam;
@@ -118,6 +117,8 @@ LRESULT CALLBACK keyboard_hook_event_proc(int nCode, WPARAM wParam, LPARAM lPara
 }
 
 LRESULT CALLBACK mouse_hook_event_proc(int nCode, WPARAM wParam, LPARAM lParam) {
+    set_modifiers();
+
     bool consumed = false;
 
     MSLLHOOKSTRUCT *mshook = (MSLLHOOKSTRUCT *) lParam;
@@ -357,9 +358,6 @@ int run(bool run_keyboard_hook, bool run_mouse_hook) {
         logger(LOG_LEVEL_DEBUG, "%s [%u]: SetWindowsHookEx() successful.\n",
                 __FUNCTION__, __LINE__);
 
-        // Check and setup modifiers.
-        initialize_modifiers(run_keyboard_hook, run_mouse_hook);
-
         // Set the exit status.
         status = UIOHOOK_SUCCESS;
 
@@ -386,6 +384,8 @@ int run(bool run_keyboard_hook, bool run_mouse_hook) {
     // We must explicitly call the cleanup handler because Windows does not
     // provide a thread cleanup method like POSIX pthread_cleanup_push/pop.
     dispatch_hook_disable();
+
+    clear_modifier_mask();
 
     return status;
 }
