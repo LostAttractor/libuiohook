@@ -114,6 +114,19 @@ bool dispatch_key_press(uint64_t timestamp, CGEventRef event_ref) {
 
     UInt64 keycode = CGEventGetIntegerValueField(event_ref, kCGKeyboardEventKeycode);
 
+    // Check and setup modifiers.
+    if      (keycode == kVK_Shift)        { set_modifier_mask(MASK_SHIFT_L);     }
+    else if (keycode == kVK_RightShift)   { set_modifier_mask(MASK_SHIFT_R);     }
+    else if (keycode == kVK_Control)      { set_modifier_mask(MASK_CTRL_L);      }
+    else if (keycode == kVK_RightControl) { set_modifier_mask(MASK_CTRL_R);      }
+    else if (keycode == kVK_Option)       { set_modifier_mask(MASK_ALT_L);       }
+    else if (keycode == kVK_RightOption)  { set_modifier_mask(MASK_ALT_R);       }
+    else if (keycode == kVK_Command)      { set_modifier_mask(MASK_META_L);      }
+    else if (keycode == kVK_RightCommand) { set_modifier_mask(MASK_META_R);      }
+    else if (keycode == kVK_CapsLock && (get_modifiers() & MASK_CAPS_LOCK) == 0) {
+        set_modifier_mask(MASK_CAPS_LOCK);
+    }
+
     // Populate key pressed event.
     uio_event.time = timestamp;
     uio_event.reserved = CGEventGetIntegerValueField(event_ref, kCGEventSourceUnixProcessID) ? 0x02 : 0x00;
@@ -170,6 +183,19 @@ bool dispatch_key_release(uint64_t timestamp, CGEventRef event_ref) {
     bool consumed = false;
 
     UInt64 keycode = CGEventGetIntegerValueField(event_ref, kCGKeyboardEventKeycode);
+
+    // Check and setup modifiers.
+    if      (keycode == kVK_Shift)        { unset_modifier_mask(MASK_SHIFT_L);      }
+    else if (keycode == kVK_RightShift)   { unset_modifier_mask(MASK_SHIFT_R);      }
+    else if (keycode == kVK_Control)      { unset_modifier_mask(MASK_CTRL_L);       }
+    else if (keycode == kVK_RightControl) { unset_modifier_mask(MASK_CTRL_R);       }
+    else if (keycode == kVK_Option)       { unset_modifier_mask(MASK_ALT_L);        }
+    else if (keycode == kVK_RightOption)  { unset_modifier_mask(MASK_ALT_R);        }
+    else if (keycode == kVK_Command)      { unset_modifier_mask(MASK_META_L);       }
+    else if (keycode == kVK_RightCommand) { unset_modifier_mask(MASK_META_R);       }
+    else if (keycode == kVK_CapsLock && (get_modifiers() & MASK_CAPS_LOCK) != 0) {
+        unset_modifier_mask(MASK_CAPS_LOCK);
+    }
 
     // Populate key released event.
     uio_event.time = timestamp;
