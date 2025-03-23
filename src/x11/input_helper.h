@@ -54,11 +54,14 @@ extern uint16_t keycode_to_vcode(KeyCode keycode);
 /* Converts a uiohook virtual key code to the appropriate X11 key code. */
 extern KeyCode vcode_to_keycode(uint16_t vcode);
 
-/* Set the native modifier mask for future events. */
+/* Set the native modifier mask for current event. */
 extern void set_modifier_mask(uint16_t mask);
 
-/* Unset the native modifier mask for future events. */
+/* Unset the native modifier mask for current event. */
 extern void unset_modifier_mask(uint16_t mask);
+
+/* Clear the native modifier mask for current event. */
+extern void clear_modifier_mask();
 
 /* Get the current native modifier mask state. */
 extern uint16_t get_modifiers();

@@ -99,14 +99,17 @@ void dispatch_hook_disabled(XAnyEvent * const x_event) {
 void dispatch_key_press(XKeyPressedEvent * const x_event) {
     uint16_t vcode = keycode_to_vcode(x_event->keycode);
 
-    if      (vcode == VC_SHIFT_L)   { set_modifier_mask(MASK_SHIFT_L); }
-    else if (vcode == VC_SHIFT_R)   { set_modifier_mask(MASK_SHIFT_R); }
-    else if (vcode == VC_CONTROL_L) { set_modifier_mask(MASK_CTRL_L);  }
-    else if (vcode == VC_CONTROL_R) { set_modifier_mask(MASK_CTRL_R);  }
-    else if (vcode == VC_ALT_L)     { set_modifier_mask(MASK_ALT_L);   }
-    else if (vcode == VC_ALT_R)     { set_modifier_mask(MASK_ALT_R);   }
-    else if (vcode == VC_META_L)    { set_modifier_mask(MASK_META_L);  }
-    else if (vcode == VC_META_R)    { set_modifier_mask(MASK_META_R);  }
+    if      (vcode == VC_SHIFT_L)     { set_modifier_mask(MASK_SHIFT_L);     }
+    else if (vcode == VC_SHIFT_R)     { set_modifier_mask(MASK_SHIFT_R);     }
+    else if (vcode == VC_CONTROL_L)   { set_modifier_mask(MASK_CTRL_L);      }
+    else if (vcode == VC_CONTROL_R)   { set_modifier_mask(MASK_CTRL_R);      }
+    else if (vcode == VC_ALT_L)       { set_modifier_mask(MASK_ALT_L);       }
+    else if (vcode == VC_ALT_R)       { set_modifier_mask(MASK_ALT_R);       }
+    else if (vcode == VC_META_L)      { set_modifier_mask(MASK_META_L);      }
+    else if (vcode == VC_META_R)      { set_modifier_mask(MASK_META_R);      }
+    else if (vcode == VC_NUM_LOCK)    { set_modifier_mask(MASK_NUM_LOCK);    }
+    else if (vcode == VC_CAPS_LOCK)   { set_modifier_mask(MASK_CAPS_LOCK);   }
+    else if (vcode == VC_SCROLL_LOCK) { set_modifier_mask(MASK_SCROLL_LOCK); }
 
     // Populate key pressed event.
     uio_event.time = x_event->serial;
@@ -167,6 +170,8 @@ void dispatch_key_release(XKeyReleasedEvent * const x_event) {
     else if (vcode == VC_ALT_R)     { unset_modifier_mask(MASK_ALT_R);   }
     else if (vcode == VC_META_L)    { unset_modifier_mask(MASK_META_L);  }
     else if (vcode == VC_META_R)    { unset_modifier_mask(MASK_META_R);  }
+    // Caps Lock, Num Lock, and Scroll Lock should not be unset as they are already
+    // handled when setting the modifier mask based on the X11 event.
 
     // Populate key released event.
     uio_event.time = x_event->serial;
