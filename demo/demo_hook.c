@@ -23,14 +23,13 @@
 #include <inttypes.h>
 #include <locale.h>
 #include <stdarg.h>
-#include <stdbool.h>
 #include <stdio.h>
-#include <string.h>
 #include <uiohook.h>
 
 
 static void logger_proc(unsigned int level, void *user_data, const char *format, va_list args) {
     switch (level) {
+        default:
         case LOG_LEVEL_INFO:
             vfprintf(stdout, format, args);
             break;

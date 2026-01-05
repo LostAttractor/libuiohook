@@ -20,9 +20,9 @@ cmake_minimum_required(VERSION 3.10)
 project(uiohook VERSION 1.3.0 LANGUAGES C)
 
 
-if (WIN32 OR WIN64)
+if(WIN32 OR WIN64)
     set(UIOHOOK_SOURCE_DIR "windows")
-elseif (APPLE)
+elseif(APPLE)
     set(UIOHOOK_SOURCE_DIR "darwin")
 else()
     set(UIOHOOK_SOURCE_DIR "evdev")
@@ -71,8 +71,8 @@ export(TARGETS uiohook FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.
 install(EXPORT ${PROJECT_NAME}-config DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 
 
-if (BUILD_DEMO)
-    if (NOT BUILD_SHARED_LIBS)
+if(BUILD_DEMO)
+    if(NOT BUILD_SHARED_LIBS)
         set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
         set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
     endif()
@@ -111,7 +111,7 @@ if (BUILD_DEMO)
         add_compile_definitions(all_demos PRIVATE inline=__inline)
         add_compile_definitions(all_demos PRIVATE _CRT_SECURE_NO_WARNINGS)
 
-        if (MSVC_VERSION LESS "1900")
+        if(MSVC_VERSION LESS "1900")
             add_compile_definitions(all_demos PRIVATE snprintf=_snprintf)
         endif()
     endif()
@@ -142,6 +142,10 @@ if(UNIX AND NOT APPLE)
     pkg_check_modules(EVDEV REQUIRED libevdev)
     target_include_directories(uiohook PRIVATE "${EVDEV_INCLUDE_DIRS}")
     target_link_libraries(uiohook "${EVDEV_LDFLAGS}")
+
+    pkg_check_modules(UDEV REQUIRED libudev)
+    target_include_directories(uiohook PRIVATE "${UDEV_INCLUDE_DIRS}")
+    target_link_libraries(uiohook "${UDEV_LDFLAGS}")
 
     #pkg_check_modules(XCB REQUIRED xcb)
     #target_include_directories(uiohook PRIVATE "${XCB_INCLUDE_DIRS}")

@@ -18,10 +18,11 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <glob.h>
 #include <libevdev/libevdev.h>
 #include <libevdev/libevdev-uinput.h>
+#include <libudev.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <uiohook.h>
 #include <unistd.h>
@@ -30,12 +31,14 @@
 #include "input_helper.h"
 #include "logger.h"
 
-#define EVENT_GLOB_PATTERN "/dev/input/event*"
-
-
 struct input_hook {
     struct libevdev *evdev;
     struct libevdev_uinput *uinput;
+};
+
+struct epoll_event_listener {
+    struct epoll_event epoll;
+    struct epoll_event_listener *next;
 };
 
 static int rel_x = 0, rel_y = 0;
@@ -148,7 +151,7 @@ static bool hook_event_proc(struct input_event *ev) {
     return consumed;
 }
 
-static int create_hook(char *path, struct input_hook **hook) {
+static int create_hook(const char *path, struct input_hook **hook) {
     int fd = open(path, O_RDONLY | O_NONBLOCK);
     if (fd < 0) {
         logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to open input device: %s! (%d)\n",
@@ -158,7 +161,7 @@ static int create_hook(char *path, struct input_hook **hook) {
     }
 
     *hook = malloc(sizeof(struct input_hook));
-    if (hook == NULL) {
+    if (*hook == NULL) {
         logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to allocate memory for evdev buffer!\n",
                 __FUNCTION__, __LINE__);
         return UIOHOOK_ERROR_OUT_OF_MEMORY;
@@ -166,13 +169,13 @@ static int create_hook(char *path, struct input_hook **hook) {
 
     int err = libevdev_new_from_fd(fd, &(*hook)->evdev);
     if (err < 0) {
-        logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to create evdev from file descriptor! (%d)\n",
+        logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to create evdev from file descriptor: %s! (%d)\n",
                 __FUNCTION__, __LINE__,
-                err);
+                path, err);
         return UIOHOOK_FAILURE;
     }
 
-    // We need to wait until no key is being pressed becasue we are going to grab below and that will cause keys to stick.
+    // We need to wait until no key is being pressed because we are going to grab below and that will cause keys to stick.
     struct input_event ev;
     for (unsigned int i = 0; i < KEY_MAX; i++) {
         while (libevdev_get_event_value((*hook)->evdev, EV_KEY, i)) {
@@ -219,7 +222,7 @@ static int create_hook(char *path, struct input_hook **hook) {
         return UIOHOOK_FAILURE;
     }
 
-    logger(LOG_LEVEL_DEBUG, "%s [%u]: Found %s device: %s.\n",
+    logger(LOG_LEVEL_DEBUG, "%s [%u]: Registering %s device: %s.\n",
             __FUNCTION__, __LINE__,
             label, path);
 
@@ -228,106 +231,126 @@ static int create_hook(char *path, struct input_hook **hook) {
 
 static void destroy_hook(struct input_hook **hook) {
     if (*hook != NULL) {
-        int fd = libevdev_get_fd((*hook)->evdev);
+        return;
+    }
 
-        if ((*hook)->evdev != NULL) {
-            libevdev_grab((*hook)->evdev, LIBEVDEV_UNGRAB);
-            libevdev_free((*hook)->evdev);
-            (*hook)->evdev = NULL;
-        }
+    const int fd = libevdev_get_fd((*hook)->evdev);
 
-        if ((*hook)->uinput != NULL) {
-            libevdev_uinput_destroy((*hook)->uinput);
-            (*hook)->uinput = NULL;
-        }
+    if ((*hook)->evdev != NULL) {
+        libevdev_grab((*hook)->evdev, LIBEVDEV_UNGRAB);
+        libevdev_free((*hook)->evdev);
+        (*hook)->evdev = NULL;
+    }
 
-        free(*hook);
-        *hook = NULL;
+    if ((*hook)->uinput != NULL) {
+        libevdev_uinput_destroy((*hook)->uinput);
+        (*hook)->uinput = NULL;
+    }
 
-        if (fd >= 0) {
-            close(fd);
-        }
+    free(*hook);
+    *hook = NULL;
+
+    if (fd >= 0) {
+        close(fd);
     }
 }
 
+static int create_event_listeners(int epoll_fd, struct epoll_event_listener **listeners) {
+    struct udev *udev = udev_new();
+    if (udev == NULL) {
+        logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to create new udev context!\n",
+                __FUNCTION__, __LINE__);
+        return UIOHOOK_FAILURE;
+    }
 
-static int create_glob_buffer(glob_t *glob_buffer) {
-    int status = glob(EVENT_GLOB_PATTERN,  GLOB_ERR | GLOB_NOSORT | GLOB_NOESCAPE, NULL, glob_buffer);
-    switch (status) {
-        case GLOB_NOSPACE:
-            logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to allocate memory for glob!\n",
+    struct udev_enumerate *enumerate = udev_enumerate_new(udev);
+    udev_enumerate_add_match_subsystem(enumerate, "input");
+    udev_enumerate_add_match_sysname(enumerate, "event*");
+    udev_enumerate_scan_devices(enumerate);
+
+    struct epoll_event_listener **listener_next = listeners;
+
+    struct udev_list_entry *devices = udev_enumerate_get_list_entry(enumerate);
+    struct udev_list_entry *dev_list_entry;
+
+    udev_list_entry_foreach(dev_list_entry, devices) {
+        const char *path = udev_list_entry_get_name(dev_list_entry);
+        if (path == NULL) {
+            logger(LOG_LEVEL_WARN, "%s [%u]: Failed to get udev entry name!\n",
                     __FUNCTION__, __LINE__);
-            return UIOHOOK_ERROR_OUT_OF_MEMORY;
+            continue;
+        }
 
-        default:
-            logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to call glob()! (%d)\n",
+        struct udev_device *dev = udev_device_new_from_syspath(udev, path);
+        if (dev == NULL) {
+            logger(LOG_LEVEL_WARN, "%s [%u]: Failed to create new udev device: %s!\n",
                     __FUNCTION__, __LINE__,
-                    status);
-            return UIOHOOK_FAILURE;
-
-        case 0:
-            // Success
-    }
-
-   return UIOHOOK_SUCCESS;
-}
-
-static void destroy_glob(glob_t *glob_buffer) {
-    globfree(glob_buffer);
-}
-
-
-static int create_event_listeners(int epoll_fd, struct epoll_event **listeners) {
-    glob_t glob_buffer;
-    int status = create_glob_buffer(&glob_buffer);
-    if (status != UIOHOOK_SUCCESS) {
-        destroy_glob(&glob_buffer);
-        return status;
-    }
-
-    struct epoll_event *event_buffer = *listeners = malloc(sizeof(struct epoll_event) * glob_buffer.gl_pathc);
-    if (event_buffer == NULL) {
-        logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to allocate memory for epoll event devices!\n",
-                __FUNCTION__, __LINE__);
-
-        destroy_glob(&glob_buffer);
-        return UIOHOOK_ERROR_OUT_OF_MEMORY;
-    }
-
-    int found = 0;
-    for (int i = 0; i < glob_buffer.gl_pathc; i++) {
-        struct input_hook *hook = NULL;
-        if (create_hook(glob_buffer.gl_pathv[i], &hook) != UIOHOOK_SUCCESS) {
-            destroy_hook(&hook);
+                    path);
             continue;
         }
 
-        event_buffer[found].events = EPOLLIN;
-        event_buffer[found].data.ptr = hook;
-
-        int fd = libevdev_get_fd(hook->evdev);
-        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event_buffer[found]) < 0) {
-            logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to add file descriptor to epoll! (%d)\n",
-                    __FUNCTION__, __LINE__);
-            
-            destroy_hook(&hook);
-            event_buffer[found].data.ptr = NULL;
+        const char *devnode = udev_device_get_devnode(dev);
+        if (devnode == NULL) {
+            logger(LOG_LEVEL_WARN, "%s [%u]: Failed to get udev device node: %s!\n",
+                    __FUNCTION__, __LINE__,
+                    path);
+            udev_device_unref(dev);
             continue;
         }
 
-        found++;
+        const char *is_keyboard = udev_device_get_property_value(dev, "ID_INPUT_KEYBOARD");
+        const char *is_mouse    = udev_device_get_property_value(dev, "ID_INPUT_MOUSE");
+        if ((is_keyboard && strcmp(is_keyboard, "1") == 0) || (is_mouse && strcmp(is_mouse, "1") == 0)) {
+            logger(LOG_LEVEL_DEBUG, "%s [%u]: Found udev input device: %s %s.\n",
+                    __FUNCTION__, __LINE__,
+                    udev_device_get_property_value(dev, "ID_VENDOR"),
+                    udev_device_get_property_value(dev, "ID_MODEL"));
+
+            *listener_next = malloc(sizeof(struct epoll_event_listener));
+            if (*listener_next == NULL) {
+                logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to allocate memory for epoll event devices!\n",
+                        __FUNCTION__, __LINE__);
+                udev_device_unref(dev);
+                continue;
+            }
+
+            struct input_hook *hook = NULL;
+            if (create_hook(devnode, &hook) != UIOHOOK_SUCCESS) {
+                logger(LOG_LEVEL_ERROR, "%s [%u]: Staring destroy_hook 0x%p\n",
+                        __FUNCTION__, __LINE__, hook);
+                destroy_hook(&hook);
+                udev_device_unref(dev);
+                free(*listener_next);
+                *listener_next = NULL;
+                continue;
+            }
+
+            struct epoll_event_listener *listener_current = *listener_next;
+            listener_current->epoll.events = EPOLLIN;
+            listener_current->epoll.data.ptr = hook;
+            listener_current->next = NULL;
+
+            const int fd = libevdev_get_fd(hook->evdev);
+            if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &listener_current->epoll) < 0) {
+                logger(LOG_LEVEL_ERROR, "%s [%u]: Failed to add file descriptor to epoll! (%d)\n",
+                        __FUNCTION__, __LINE__);
+
+                destroy_hook(&hook);
+                listener_current->epoll.data.ptr = NULL;
+                udev_device_unref(dev);
+                free(*listener_next);
+                *listener_next = NULL;
+                continue;
+            }
+
+            listener_next = &listener_current->next;
+        }
+
+        udev_device_unref(dev);
     }
 
-    destroy_glob(&glob_buffer);
-
-    *listeners = realloc(event_buffer, sizeof(struct epoll_event *) * found);
-    if (*listeners == NULL) {
-        logger(LOG_LEVEL_WARN, "%s [%u]: Failed to realloc event listeners! (%d)\n",
-                __FUNCTION__, __LINE__);
-
-        *listeners = event_buffer;
-        event_buffer = NULL;
-    }
+    udev_enumerate_unref(enumerate);
+    udev_unref(udev);
 
     return UIOHOOK_SUCCESS;
 }
@@ -346,7 +369,7 @@ UIOHOOK_API int hook_run() {
         return UIOHOOK_ERROR_EPOLL_CREATE;
     }
 
-    struct epoll_event *listeners = NULL;
+    struct epoll_event_listener *listeners = NULL;
     int status = create_event_listeners(epoll_fd, &listeners);
     if (status != UIOHOOK_SUCCESS) {
         close(epoll_fd);
