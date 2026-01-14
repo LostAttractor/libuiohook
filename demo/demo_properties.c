@@ -16,15 +16,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <uiohook.h>
-
 
 static void logger_proc(unsigned int level, void *user_data, const char *format, va_list args) {
     switch (level) {
@@ -61,9 +55,10 @@ int main() {
             monitors[i].width, monitors[i].height,
             monitors[i].x, monitors[i].y);
     }
+    free(monitors);
     logger(LOG_LEVEL_INFO, "\n");
 
-    // Retrieves the keyboard auto repeat rate.
+    // Retrieves the keyboard auto-repeat rate.
     long int repeat_rate = hook_get_auto_repeat_rate();
     if (repeat_rate >= 0) {
         logger(LOG_LEVEL_INFO, "Auto Repeat Rate:\t%ld\n", repeat_rate);
@@ -71,7 +66,7 @@ int main() {
         logger(LOG_LEVEL_WARN, "Failed to acquire keyboard auto repeat rate!\n");
     }
 
-    // Retrieves the keyboard auto repeat delay.
+    // Retrieves the keyboard auto-repeat delay.
     long int repeat_delay = hook_get_auto_repeat_delay();
     if (repeat_delay >= 0) {
         logger(LOG_LEVEL_INFO, "Auto Repeat Delay:\t%ld\n", repeat_delay);
