@@ -120,6 +120,8 @@ typedef struct _uiohook_event {
     event_type type;
     uint64_t time;
     uint32_t mask;
+    // Compatibility field used by in-progress evdev dispatcher code.
+    uint16_t reserved;
     union {
         keyboard_event_data keyboard;
         mouse_event_data mouse;
